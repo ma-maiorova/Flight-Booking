@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -96,10 +97,16 @@ public class CacheService {
     }
 
     public void evictSearchByRoute(String origin, String destination) {
-        // Pattern delete for all dates of this route
+        // Use SCAN to non-blockingly find and delete all keys for this route
         String pattern = SEARCH_KEY_PREFIX + origin + ":" + destination + ":*";
-        var keys = redisTemplate.keys(pattern);
-        if (keys != null && !keys.isEmpty()) {
+        List<String> keys = new ArrayList<>();
+        redisTemplate.execute((org.springframework.data.redis.core.RedisCallback<Void>) connection -> {
+            org.springframework.data.redis.core.Cursor<byte[]> cursor = connection.scan(
+                    org.springframework.data.redis.core.ScanOptions.scanOptions().match(pattern).count(100).build());
+            cursor.forEachRemaining(key -> keys.add(new String(key)));
+            return null;
+        });
+        if (!keys.isEmpty()) {
             redisTemplate.delete(keys);
             log.info("[CACHE EVICT] pattern={} count={}", pattern, keys.size());
         }
