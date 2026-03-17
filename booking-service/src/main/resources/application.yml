@@ -1,0 +1,59 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: booking-service
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:booking_db}
+    username: ${DB_USER:booking_user}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: false
+
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.sql
+    enabled: true
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+grpc:
+  client:
+    flight-service:
+      address: static://${FLIGHT_SERVICE_HOST:flight-service}:${FLIGHT_SERVICE_GRPC_PORT:9090}
+      negotiation-type: plaintext
+
+booking-service:
+  flight-service:
+    api-key: ${FLIGHT_SERVICE_PASSWORD}
+  circuit-breaker:
+    failure-threshold: ${CB_FAILURE_THRESHOLD:5}
+    timeout-seconds: ${CB_TIMEOUT_SECONDS:30}
+    half-open-max-calls: ${CB_HALF_OPEN_MAX_CALLS:3}
+  retry:
+    max-attempts: ${RETRY_MAX_ATTEMPTS:3}
+    initial-backoff-ms: ${RETRY_INITIAL_BACKOFF_MS:100}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.flightbooking: INFO
+    io.grpc: WARN
