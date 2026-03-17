@@ -1,0 +1,68 @@
+# ─── IDE ───────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+*.code-workspace
+.project
+.classpath
+.settings/
+
+# ─── Build (Maven) ─────────────────────────────────────────────────────────
+target/
+pom.xml.tag
+pom.releaseBackup
+release.properties
+
+# ─── Build (Gradle, если появится) ─────────────────────────────────────────
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# ─── Java ─────────────────────────────────────────────────────────────────
+*.class
+*.jar
+*.war
+*.ear
+*.log
+hs_err_pid*
+
+# ─── OS ───────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+
+# ─── Env / secrets ───────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.pem
+application-local.yml
+application-local.properties
+
+# ─── Redis (локальные данные, дампы) ───────────────────────────────────────
+redis/data/
+redis/dump.rdb
+redis/*.rdb
+
+# ─── Логи и временные файлы ───────────────────────────────────────────────
+logs/
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# ─── Прочее ────────────────────────────────────────────────────────────────
+.cache/
+out/
+
+ARCHITECTURE.md
+ER-DIAGRAM.md
+Flight Booking: gRPC+Redis.md
+REQUEST_EXAMPLES.md
+scripts

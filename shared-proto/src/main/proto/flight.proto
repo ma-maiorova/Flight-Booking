@@ -1,0 +1,129 @@
+syntax = "proto3";
+
+package flight;
+
+option java_package = "com.flightbooking.grpc";
+option java_outer_classname = "FlightProto";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum FlightStatus {
+  SCHEDULED = 0;
+  DEPARTED  = 1;
+  CANCELLED = 2;
+  COMPLETED = 3;
+}
+
+enum ReservationStatus {
+  ACTIVE   = 0;
+  RELEASED = 1;
+  EXPIRED  = 2;
+}
+
+// ─── Common Messages ─────────────────────────────────────────────────────────
+
+// Full flight information returned by search and get operations.
+message FlightInfo {
+  string id               = 1;
+  string flight_number    = 2;
+  string airline_code     = 3;
+  string airline_name     = 4;
+  string origin           = 5;  // IATA code, e.g. "SVO"
+  string destination      = 6;  // IATA code, e.g. "LED"
+  google.protobuf.Timestamp departure_time = 7;
+  google.protobuf.Timestamp arrival_time   = 8;
+  int32  total_seats      = 9;
+  int32  available_seats  = 10;
+  double price            = 11;
+  FlightStatus status     = 12;
+}
+
+// ─── SearchFlights ────────────────────────────────────────────────────────────
+
+// Request to search scheduled flights by route and optional date.
+// Errors: INVALID_ARGUMENT if origin or destination are empty.
+message SearchFlightsRequest {
+  string origin      = 1;  // Required. IATA code, e.g. "SVO"
+  string destination = 2;  // Required. IATA code, e.g. "LED"
+  // Optional departure date filter in format "yyyy-MM-dd".
+  // Empty string means no date filter.
+  string date        = 3;
+}
+
+message SearchFlightsResponse {
+  repeated FlightInfo flights = 1;
+}
+
+// ─── GetFlight ────────────────────────────────────────────────────────────────
+
+// Request to get a single flight by its UUID.
+// Errors: NOT_FOUND if flight does not exist.
+message GetFlightRequest {
+  string flight_id = 1;  // UUID of the flight
+}
+
+message GetFlightResponse {
+  FlightInfo flight = 1;
+}
+
+// ─── ReserveSeats ─────────────────────────────────────────────────────────────
+
+// Reserve seats for a booking. Idempotent: repeated calls with the same
+// booking_id return the existing reservation.
+// Errors:
+//   NOT_FOUND          - flight not found
+//   FAILED_PRECONDITION - flight not in SCHEDULED status
+//   RESOURCE_EXHAUSTED  - not enough available seats
+//   INVALID_ARGUMENT    - seat_count <= 0 or missing fields
+message ReserveSeatsRequest {
+  string flight_id   = 1;  // UUID of the flight
+  string booking_id  = 2;  // UUID of the booking (idempotency key)
+  int32  seat_count  = 3;  // Number of seats to reserve (> 0)
+}
+
+message ReserveSeatsResponse {
+  string reservation_id  = 1;  // UUID of created SeatReservation
+  string booking_id      = 2;
+  string flight_id       = 3;
+  int32  reserved_seats  = 4;
+  ReservationStatus status = 5;
+}
+
+// ─── ReleaseReservation ───────────────────────────────────────────────────────
+
+// Release (cancel) an active seat reservation. Returns seats to the flight.
+// Errors:
+//   NOT_FOUND - no active reservation found for booking_id
+message ReleaseReservationRequest {
+  string booking_id = 1;  // UUID of the booking whose reservation to release
+}
+
+message ReleaseReservationResponse {
+  string reservation_id  = 1;
+  string booking_id      = 2;
+  int32  released_seats  = 3;
+  ReservationStatus status = 4;
+}
+
+// ─── Service ─────────────────────────────────────────────────────────────────
+
+// Flight Service gRPC API.
+// All methods require the gRPC metadata header "x-api-key" with a valid key.
+// Missing or invalid key returns UNAUTHENTICATED.
+service FlightService {
+  // Search scheduled flights by route and optional departure date.
+  rpc SearchFlights (SearchFlightsRequest) returns (SearchFlightsResponse);
+
+  // Get a single flight by its ID.
+  rpc GetFlight (GetFlightRequest) returns (GetFlightResponse);
+
+  // Atomically reserve seats for a booking.
+  // Idempotent: same booking_id returns existing reservation.
+  rpc ReserveSeats (ReserveSeatsRequest) returns (ReserveSeatsResponse);
+
+  // Release an active seat reservation, returning seats to the flight.
+  rpc ReleaseReservation (ReleaseReservationRequest) returns (ReleaseReservationResponse);
+}
