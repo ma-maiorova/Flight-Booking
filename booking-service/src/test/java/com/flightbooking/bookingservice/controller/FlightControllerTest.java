@@ -2,6 +2,7 @@ package com.flightbooking.bookingservice.controller;
 
 import com.flightbooking.bookingservice.circuitbreaker.CircuitBreaker;
 import com.flightbooking.bookingservice.client.FlightServiceClient;
+import com.flightbooking.bookingservice.config.TestMetricsConfig;
 import com.flightbooking.grpc.FlightInfo;
 import com.flightbooking.grpc.FlightStatus;
 import com.google.protobuf.Timestamp;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -27,6 +29,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = {FlightController.class, GlobalExceptionHandler.class})
+@Import(TestMetricsConfig.class)
 @ActiveProfiles("test")
 class FlightControllerTest {
 

@@ -1,0 +1,17 @@
+booking-service:
+  flight-service:
+    api-key: test-secret-key
+  circuit-breaker:
+    failure-threshold: 5
+    timeout-seconds: 30
+    half-open-max-calls: 3
+  retry:
+    max-attempts: 1
+    initial-backoff-ms: 1
+
+spring:
+  liquibase:
+    enabled: true
+  jpa:
+    hibernate:
+      ddl-auto: validate

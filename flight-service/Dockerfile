@@ -1,4 +1,4 @@
-FROM maven:3.9.6-eclipse-temurin-17 AS build
+FROM maven:3.9-eclipse-temurin-25 AS build
 WORKDIR /app
 
 # Copy parent pom
@@ -18,7 +18,8 @@ COPY booking-service/pom.xml booking-service/pom.xml
 # Build (skip tests for Docker build)
 RUN mvn -pl shared-proto,flight-service -am clean package -DskipTests
 
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:25-jre
+RUN apt-get update && apt-get install -y wget --no-install-recommends && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 COPY --from=build /app/flight-service/target/flight-service-1.0.0.jar app.jar
