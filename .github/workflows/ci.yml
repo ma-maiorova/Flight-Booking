@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: ["**"]
 
+permissions:
+  checks: write
+  contents: read
+
 env:
   JAVA_VERSION: "25"
   FLIGHT_SERVICE_PASSWORD: test-api-key
