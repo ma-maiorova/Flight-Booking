@@ -84,7 +84,7 @@ groups:
       # ─── Redis memory > 80% ───────────────────────────────────────────────────
       - alert: RedisHighMemory
         expr: |
-          redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+          redis_memory_max_bytes > 0 and redis_memory_used_bytes / redis_memory_max_bytes > 0.8
         for: 5m
         labels:
           severity: warning
