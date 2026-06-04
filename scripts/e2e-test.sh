@@ -95,11 +95,13 @@ pass "Seats restored to $AVAIL_RESTORED"
 
 # ─── Step 7: Verify metrics endpoints ────────────────────────────────────────
 info "Step 7: Verify Prometheus metrics endpoints"
-curl -sf "$BOOKING_URL/actuator/metrics" | grep -q "http_requests_total" || \
+BOOKING_METRICS=$(curl -sf "$BOOKING_URL/actuator/metrics")
+echo "$BOOKING_METRICS" | grep -q "http_requests_total" || \
   fail "booking-service /actuator/metrics missing http_requests_total"
 pass "booking-service /actuator/metrics contains http_requests_total"
 
-curl -sf "$FLIGHT_URL/actuator/metrics" | grep -q "jvm_memory_used_bytes" || \
+FLIGHT_METRICS=$(curl -sf "$FLIGHT_URL/actuator/metrics")
+echo "$FLIGHT_METRICS" | grep -q "jvm_memory_used_bytes" || \
   fail "flight-service /actuator/metrics not responding with JVM metrics"
 pass "flight-service /actuator/metrics is accessible and contains JVM metrics"
 

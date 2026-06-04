@@ -189,15 +189,21 @@ jobs:
 
           echo "=== Querying Prometheus SLI metrics ==="
 
-          # SLI 1: Error rate < 1%
-          ERROR_RATE=$(curl -sf \
-            "$PROM?query=100*sum(rate(http_request_errors_total{service='booking-service'}[5m]))/sum(rate(http_requests_total{service='booking-service'}[5m]))" \
-            | python3 -c "
-          import sys, json
+          prom_query() {
+            curl -sf -G "$PROM" --data-urlencode "query=$1" | python3 -c "
+          import sys, json, math
           d = json.load(sys.stdin)
           r = d['data']['result']
-          print(float(r[0]['value'][1]) if r else 0.0)
-          ")
+          if not r:
+              print(0.0)
+          else:
+              v = float(r[0]['value'][1])
+              print(0.0 if (math.isnan(v) or math.isinf(v)) else v)
+          "
+          }
+
+          # SLI 1: Error rate < 1%
+          ERROR_RATE=$(prom_query "100*sum(rate(http_request_errors_total{service='booking-service'}[5m]))/sum(rate(http_requests_total{service='booking-service'}[5m]))")
           echo "Error rate (booking-service): ${ERROR_RATE}%"
           python3 -c "
           er = float('${ERROR_RATE}')
@@ -206,14 +212,8 @@ jobs:
           "
 
           # SLI 2: p95 latency < 500ms
-          P95=$(curl -sf \
-            "$PROM?query=histogram_quantile(0.95,sum(rate(http_request_duration_seconds_bucket{service='booking-service'}[5m]))by(le))" \
-            | python3 -c "
-          import sys, json
-          d = json.load(sys.stdin)
-          r = d['data']['result']
-          print(float(r[0]['value'][1])*1000 if r else 0.0)
-          ")
+          P95_RAW=$(prom_query "histogram_quantile(0.95,sum(rate(http_request_duration_seconds_bucket{service='booking-service'}[5m]))by(le))")
+          P95=$(python3 -c "print(float('${P95_RAW}') * 1000)")
           echo "p95 latency (booking-service): ${P95}ms"
           python3 -c "
           p95 = float('${P95}')
