@@ -1,0 +1,244 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  checks: write
+  contents: read
+
+env:
+  JAVA_VERSION: "25"
+  FLIGHT_SERVICE_PASSWORD: test-api-key
+  FLIGHT_DB_PASSWORD: flight_pass
+  BOOKING_DB_PASSWORD: booking_pass
+
+# ─── JOBS ─────────────────────────────────────────────────────────────────────
+jobs:
+
+  # ─── 1. Build all modules ──────────────────────────────────────────────────
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Compile all modules
+        run: mvn -B clean compile -DskipTests
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-maven-
+
+  # ─── 2. Unit tests ────────────────────────────────────────────────────────
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Run unit tests (excludes integration profile)
+        run: mvn -B test -Dspring.profiles.active=test
+
+      - name: Publish test report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Unit Test Results
+          path: "**/target/surefire-reports/*.xml"
+          reporter: java-junit
+          fail-on-error: false
+
+  # ─── 3. Integration tests ─────────────────────────────────────────────────
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Run integration tests (Testcontainers)
+        run: |
+          mvn -B test \
+            -Dtest="**/*IntegrationTest" \
+            -Dspring.profiles.active=integration \
+            -Dsurefire.failIfNoSpecifiedTests=false
+        env:
+          TESTCONTAINERS_RYUK_DISABLED: "false"
+
+      - name: Publish integration test report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Integration Test Results
+          path: "**/target/surefire-reports/*.xml"
+          reporter: java-junit
+          fail-on-error: false
+
+  # ─── 4. E2E tests + Load tests + Metrics validation ───────────────────────
+  e2e-and-load:
+    name: E2E + Load Tests + Metrics Validation
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create .env for docker compose
+        run: |
+          cat > .env <<EOF
+          FLIGHT_SERVICE_PASSWORD=${{ env.FLIGHT_SERVICE_PASSWORD }}
+          FLIGHT_DB_PASSWORD=${{ env.FLIGHT_DB_PASSWORD }}
+          BOOKING_DB_PASSWORD=${{ env.BOOKING_DB_PASSWORD }}
+          EOF
+
+      - name: Build Docker images
+        run: docker compose build
+
+      - name: Start all services
+        run: docker compose up -d
+
+      - name: Wait for booking-service to be healthy
+        run: |
+          echo "Waiting for booking-service..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/actuator/health/liveness >/dev/null 2>&1; then
+              echo "booking-service is ready"
+              break
+            fi
+            echo "  attempt $i/60..."
+            sleep 3
+          done
+
+      - name: Wait for flight-service to be healthy
+        run: |
+          echo "Waiting for flight-service..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8081/actuator/health/liveness >/dev/null 2>&1; then
+              echo "flight-service is ready"
+              break
+            fi
+            sleep 3
+          done
+
+      # ─── E2E test ────────────────────────────────────────────────────────
+      - name: Run E2E test
+        run: bash scripts/e2e-test.sh
+        env:
+          BOOKING_URL: http://localhost:8080
+          FLIGHT_URL: http://localhost:8081
+          MAX_WAIT: "30"
+
+      # ─── Load test ───────────────────────────────────────────────────────
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring \
+            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] \
+            https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6 -y
+
+      - name: Run k6 load test
+        run: |
+          k6 run \
+            --out json=load-test-results.json \
+            --summary-export=load-test-summary.json \
+            load-tests/booking-load-test.js
+        env:
+          BASE_URL: http://localhost:8080
+
+      # ─── Metrics validation from Prometheus ──────────────────────────────
+      - name: Wait for Prometheus to scrape metrics
+        run: sleep 30
+
+      - name: Validate SLI conditions from Prometheus
+        run: |
+          PROM="http://localhost:9090/api/v1/query"
+
+          echo "=== Querying Prometheus SLI metrics ==="
+
+          prom_query() {
+            curl -sf -G "$PROM" --data-urlencode "query=$1" | python3 -c "
+          import sys, json, math
+          d = json.load(sys.stdin)
+          r = d['data']['result']
+          if not r:
+              print(0.0)
+          else:
+              v = float(r[0]['value'][1])
+              print(0.0 if (math.isnan(v) or math.isinf(v)) else v)
+          "
+          }
+
+          # SLI 1: Error rate < 1%
+          ERROR_RATE=$(prom_query "100*sum(rate(http_request_errors_total{service='booking-service'}[5m]))/sum(rate(http_requests_total{service='booking-service'}[5m]))")
+          echo "Error rate (booking-service): ${ERROR_RATE}%"
+          python3 -c "
+          er = float('${ERROR_RATE}')
+          assert er < 1.0, f'ERROR RATE SLO VIOLATED: {er:.2f}% >= 1% threshold'
+          print(f'OK: error rate {er:.2f}% < 1%')
+          "
+
+          # SLI 2: p95 latency < 500ms
+          P95_RAW=$(prom_query "histogram_quantile(0.95,sum(rate(http_request_duration_seconds_bucket{service='booking-service'}[5m]))by(le))")
+          P95=$(python3 -c "print(float('${P95_RAW}') * 1000)")
+          echo "p95 latency (booking-service): ${P95}ms"
+          python3 -c "
+          p95 = float('${P95}')
+          assert p95 < 500.0, f'P95 LATENCY SLO VIOLATED: {p95:.0f}ms >= 500ms threshold'
+          print(f'OK: p95 latency {p95:.0f}ms < 500ms')
+          "
+
+          echo "=== All SLI conditions passed ==="
+
+      # ─── Artifacts ───────────────────────────────────────────────────────
+      - name: Upload load test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results
+          path: |
+            load-test-results.json
+            load-test-summary.json
+
+      - name: Show service logs on failure
+        if: failure()
+        run: |
+          docker compose logs flight-service  --tail=50
+          docker compose logs booking-service --tail=50
+
+      - name: Stop services
+        if: always()
+        run: docker compose down -v

@@ -1,0 +1,25 @@
+flight-service:
+  api-key: test-secret-key
+  cache:
+    ttl-minutes: 1
+
+grpc:
+  server:
+    port: 0
+
+spring:
+  liquibase:
+    enabled: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  data:
+    redis:
+      sentinel:
+        master: mymaster
+        nodes: localhost:26379
+
+management:
+  health:
+    redis:
+      enabled: false

@@ -1,0 +1,56 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+rule_files:
+  - "alerts.yml"
+
+scrape_configs:
+  - job_name: flight-service
+    metrics_path: /actuator/metrics
+    static_configs:
+      - targets:
+          - flight-service:8081
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: flight-service
+
+  - job_name: booking-service
+    metrics_path: /actuator/metrics
+    static_configs:
+      - targets:
+          - booking-service:8080
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: booking-service
+
+  - job_name: postgres-flight
+    static_configs:
+      - targets:
+          - postgres-exporter-flight:9187
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: db_instance
+        replacement: flight
+
+  - job_name: postgres-booking
+    static_configs:
+      - targets:
+          - postgres-exporter-booking:9187
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: db_instance
+        replacement: booking
+
+  - job_name: redis
+    static_configs:
+      - targets:
+          - redis-exporter:9121
